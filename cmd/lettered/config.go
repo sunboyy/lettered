@@ -2,12 +2,14 @@ package main
 
 import (
 	"github.com/sunboyy/lettered/pkg/management"
+	"github.com/sunboyy/lettered/pkg/p2p"
 	"gopkg.in/ini.v1"
 )
 
 // Config contains all of the configuration options of the application.
 type Config struct {
 	Management management.Config
+	P2P        p2p.Config
 }
 
 // LoadConfig instantiates a Config struct and fill in the configuration options
@@ -34,5 +36,6 @@ func LoadConfig() (Config, error) {
 func DefaultConfig() Config {
 	return Config{
 		Management: management.DefaultConfig(),
+		P2P:        p2p.DefaultConfig(),
 	}
 }

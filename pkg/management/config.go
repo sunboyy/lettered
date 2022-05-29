@@ -5,7 +5,7 @@ type Config struct {
 	// Password is the secret key for logging in to the management console.
 	Password string
 
-	// SessionTimeout is the duration (in seconds) that the session ID for
+	// SessionTimeout is the duration (in seconds) that the access token for
 	// authenticaing to the management console can be used.
 	SessionTimeout int
 }

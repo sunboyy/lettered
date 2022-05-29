@@ -3,13 +3,16 @@ module github.com/sunboyy/lettered
 go 1.18
 
 require (
+	github.com/btcsuite/btcd/btcec/v2 v2.2.0
 	github.com/gin-gonic/gin v1.7.7
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/rs/zerolog v1.26.1
+	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
 	gopkg.in/ini.v1 v1.66.4
 )
 
 require (
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-playground/locales v0.13.0 // indirect
 	github.com/go-playground/universal-translator v0.17.0 // indirect

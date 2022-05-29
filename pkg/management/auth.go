@@ -14,7 +14,7 @@ type Auth struct {
 	// password is an administrator password.
 	password string
 
-	// sessionCache is a cache that stores valid session IDs after
+	// sessionCache is a cache that stores valid access tokens after
 	// authentication succeeds.
 	sessionCache *cache.Cache
 }
@@ -31,31 +31,31 @@ func NewAuth(config Config) *Auth {
 	}
 }
 
-// Login creates and returns a new session ID if the provided password matches
-// the password in the configuration. The newly generated session ID is stored
+// Login creates and returns a new access token if the provided password matches
+// the password in the configuration. The newly generated access token is stored
 // in the sessionCache so that it can be used for further requests.
 func (a *Auth) Login(password string) (string, bool) {
 	if password != a.password {
 		return "", false
 	}
 
-	sessionID := generateSessionID()
-	a.sessionCache.Add(sessionID, nil, cache.DefaultExpiration)
+	accessToken := generateAccessToken()
+	a.sessionCache.Add(accessToken, nil, cache.DefaultExpiration)
 
-	return sessionID, true
+	return accessToken, true
 }
 
-// SessionValid returns true if the provided session ID exists in the
-// sessionCache, meaning that the session ID can still be used for further
+// AccessTokenValid returns true if the provided access token exists in the
+// sessionCache, meaning that the access token can still be used for further
 // requests.
-func (a *Auth) SessionValid(sessionID string) bool {
-	_, ok := a.sessionCache.Get(sessionID)
+func (a *Auth) AccessTokenValid(accessToken string) bool {
+	_, ok := a.sessionCache.Get(accessToken)
 	return ok
 }
 
-func generateSessionID() string {
-	sessionIDBytes := make([]byte, 16)
-	rand.Read(sessionIDBytes)
+func generateAccessToken() string {
+	accessTokenBytes := make([]byte, 16)
+	rand.Read(accessTokenBytes)
 
-	return hex.EncodeToString(sessionIDBytes)
+	return hex.EncodeToString(accessTokenBytes)
 }
