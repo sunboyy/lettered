@@ -18,14 +18,14 @@ func (h *ManagementHandler) Login(ctx *gin.Context) {
 		return
 	}
 
-	sessionID, ok := h.auth.Login(req.Password)
+	accessToken, ok := h.auth.Login(req.Password)
 	if !ok {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "incorrect password"})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, ManagementLoginResponse{
-		SessionID: sessionID,
+		AccessToken: accessToken,
 	})
 }
 
@@ -34,5 +34,5 @@ type ManagementLoginRequest struct {
 }
 
 type ManagementLoginResponse struct {
-	SessionID string `json:"sessionId"`
+	AccessToken string `json:"accessToken"`
 }

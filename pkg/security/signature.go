@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
+	"github.com/rs/zerolog/log"
 )
 
 // ParsePrivateKey constructs *btcec.PrivateKey from the base64-encoded string
@@ -46,4 +48,30 @@ func MarshalPrivateKey(privateKey *btcec.PrivateKey) string {
 func MarshalPublicKey(publicKey *btcec.PublicKey) string {
 	publicKeyBytes := publicKey.SerializeCompressed()
 	return base64.StdEncoding.EncodeToString(publicKeyBytes)
+}
+
+// VerifySignature verifies base64-encoded ECDSA signature with provided public
+// key and data hash. It returns true only if there is no error decoding the
+// signature string and the signature is valid with the provided public key and
+// hash.
+func VerifySignature(publicKey *btcec.PublicKey, dataHash []byte,
+	signatureString string) bool {
+
+	signatureBytes, err := base64.StdEncoding.DecodeString(
+		signatureString,
+	)
+	if err != nil {
+		log.Debug().Str("source", "security.VerifySignature").
+			Err(err).Msg("cannot decode base64 signature")
+		return false
+	}
+
+	signature, err := ecdsa.ParseSignature(signatureBytes)
+	if err != nil {
+		log.Debug().Str("source", "security.VerifySignature").
+			Err(err).Msg("cannot parse ECDSA signature")
+		return false
+	}
+
+	return signature.Verify(dataHash, publicKey)
 }
