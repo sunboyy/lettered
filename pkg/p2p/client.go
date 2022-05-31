@@ -12,6 +12,7 @@ import (
 
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
+	"github.com/sunboyy/lettered/pkg/common"
 	"github.com/sunboyy/lettered/pkg/security"
 	"golang.org/x/net/proxy"
 )
@@ -43,12 +44,7 @@ type Client struct {
 // NewClient is a constructor function for Client. Proxy URL is extracted from
 // P2P configuration and used to setup a specialized HTTP client and private key
 // is used to sign requests and will never be transmitted to the internet.
-func NewClient(config Config) (*Client, error) {
-	privateKey, err := security.ParsePrivateKey(config.PrivateKey)
-	if err != nil {
-		return nil, err
-	}
-
+func NewClient(commonConfig common.Config, config Config) (*Client, error) {
 	proxyURL, err := url.Parse(config.ProxyURL)
 	if err != nil {
 		return nil, err
@@ -62,7 +58,7 @@ func NewClient(config Config) (*Client, error) {
 	transport := &http.Transport{Dial: dialer.Dial}
 
 	return &Client{
-		privateKey: privateKey,
+		privateKey: commonConfig.PrivateKey,
 		httpClient: &http.Client{Transport: transport},
 	}, nil
 }

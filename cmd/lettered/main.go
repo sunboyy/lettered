@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 	"github.com/sunboyy/lettered/pkg/management"
@@ -28,5 +30,5 @@ func start(config Config) {
 		managementRouter.POST("/login", managementHandler.Login)
 	}
 
-	r.Run()
+	r.Run(":" + strconv.Itoa(config.Port))
 }

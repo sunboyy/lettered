@@ -21,5 +21,8 @@ func New(config Config) (*DB, error) {
 		panic(err)
 	}
 
+	backend.AutoMigrate(&FriendRequest{})
+	backend.AutoMigrate(&Friend{})
+
 	return &DB{backend: backend}, nil
 }

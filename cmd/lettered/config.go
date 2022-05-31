@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/sunboyy/lettered/pkg/common"
 	"github.com/sunboyy/lettered/pkg/db"
 	"github.com/sunboyy/lettered/pkg/management"
 	"github.com/sunboyy/lettered/pkg/p2p"
@@ -9,6 +10,8 @@ import (
 
 // Config contains all of the configuration options of the application.
 type Config struct {
+	Port       int
+	Common     common.RawConfig
 	DB         db.Config
 	Management management.Config
 	P2P        p2p.Config
@@ -37,6 +40,8 @@ func LoadConfig() (Config, error) {
 // DefaultConfig returns all default values for the Config struct.
 func DefaultConfig() Config {
 	return Config{
+		Port:       8080,
+		Common:     common.DefaultConfig(),
 		DB:         db.DefaultConfig(),
 		Management: management.DefaultConfig(),
 		P2P:        p2p.DefaultConfig(),
