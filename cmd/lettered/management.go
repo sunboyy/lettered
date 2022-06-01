@@ -1,26 +1,76 @@
 package main
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sunboyy/lettered/pkg/common"
+	"github.com/sunboyy/lettered/pkg/friend"
 	"github.com/sunboyy/lettered/pkg/management"
+	"github.com/sunboyy/lettered/pkg/p2p"
 )
 
+var (
+	// ErrUnauthorized is returned when the user does not request to the
+	// management APIs with valid access token.
+	ErrUnauthorized = errors.New("unauthorized")
+
+	// ErrInvalidRequest is returned when the system cannot bind request
+	// body or request query with the response struct.
+	ErrInvalidRequest = errors.New("invalid request")
+
+	// ErrIncorrectPassword is returned when login API is called but the
+	// given password is incorrect.
+	ErrIncorrectPassword = errors.New("incorrect password")
+)
+
+// ManagementHandler is a set of gin handlers functions that handles management
+// functionality of the system.
 type ManagementHandler struct {
-	auth *management.Auth
+	commonConfig  common.Config
+	auth          *management.Auth
+	friendManager *friend.Manager
+	p2pClient     *p2p.Client
 }
 
+// Middleware is an authentication middleware for the management APIs. It
+// rejects all requests with no valid access token.
+func (h *ManagementHandler) Middleware(ctx *gin.Context) {
+	authHeader := ctx.Request.Header.Get("Authorization")
+	authHeader = strings.TrimPrefix(authHeader, "Bearer ")
+	if !h.auth.AccessTokenValid(authHeader) {
+		ctx.JSON(
+			http.StatusUnauthorized,
+			gin.H{"error": ErrUnauthorized.Error()},
+		)
+		ctx.Abort()
+		return
+	}
+
+	ctx.Next()
+}
+
+// Login is a gin handler for logging in to the management console. It receives
+// a password from the request body, generates a new access token if the
+// given password is correct.
 func (h *ManagementHandler) Login(ctx *gin.Context) {
 	var req ManagementLoginRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "unable to read request"})
+		ctx.JSON(
+			http.StatusBadRequest,
+			gin.H{"error": ErrInvalidRequest.Error()},
+		)
 		return
 	}
 
 	accessToken, ok := h.auth.Login(req.Password)
 	if !ok {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "incorrect password"})
+		ctx.JSON(
+			http.StatusBadRequest,
+			gin.H{"error": ErrIncorrectPassword},
+		)
 		return
 	}
 
@@ -29,10 +79,54 @@ func (h *ManagementHandler) Login(ctx *gin.Context) {
 	})
 }
 
+// ManagementLoginRequest defines a request body of the management login API.
 type ManagementLoginRequest struct {
 	Password string `json:"password"`
 }
 
+// ManagementLoginResponse defines a response body of the management login API.
 type ManagementLoginResponse struct {
 	AccessToken string `json:"accessToken"`
+}
+
+// Identity is a gin handler returning the user's identifier for other people
+// to connect.
+func (h *ManagementHandler) Identity(ctx *gin.Context) {
+	ctx.JSON(http.StatusOK, IdentityResponse{
+		Identifier: p2p.CreateIdentifier(
+			h.commonConfig.PrivateKey.PubKey(),
+			h.commonConfig.Hostname,
+		),
+	})
+}
+
+// IdentityResponse defines response body of the identity management API.
+type IdentityResponse struct {
+	Identifier string `json:"identifier"`
+}
+
+// PeerInfo is a gin handler performing as aproxy for requesting MyInfo API to
+// the specified peer.
+func (h *ManagementHandler) PeerInfo(ctx *gin.Context) {
+	var req PeerInfoRequest
+	if err := ctx.ShouldBindQuery(&req); err != nil {
+		ctx.JSON(
+			http.StatusBadRequest,
+			gin.H{"error": ErrInvalidRequest.Error()},
+		)
+		return
+	}
+
+	userInfo, err := p2p.NewPeer(h.p2pClient, req.Hostname).MyInfo()
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, userInfo)
+}
+
+// PeerInfoRequest defines a request query structure when calling peer info API.
+type PeerInfoRequest struct {
+	Hostname string `form:"hostname"`
 }

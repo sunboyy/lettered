@@ -2,7 +2,6 @@ package friend
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/rs/zerolog/log"
 	"github.com/sunboyy/lettered/pkg/common"
@@ -47,9 +46,9 @@ func (m *Manager) MyInfo() p2p.MyInfoResponse {
 // identifier is a concatenation of public key and hostname delimited with an
 // '@' sign.
 func (m *Manager) SendInvite(identifier string) error {
-	publicKey, hostname, err := extractIdentifier(identifier)
-	if err != nil {
-		return err
+	publicKey, hostname, ok := p2p.ExtractIdentifier(identifier)
+	if !ok {
+		return ErrInvalidIdentifier
 	}
 
 	// Discard sending friend request if the peer is already a friend.
@@ -204,15 +203,4 @@ func (m *Manager) requestToFriend(friendReq *db.FriendRequest) error {
 	}
 
 	return nil
-}
-
-// extractIndentifier extracts peer identifier into public key and hostname by
-// splitting with '@' sign. Zero or multiple '@' signs in the identifier is
-// invalid.
-func extractIdentifier(identifier string) (string, string, error) {
-	tokens := strings.Split(identifier, "@")
-	if len(tokens) != 2 {
-		return "", "", ErrInvalidIdentifier
-	}
-	return tokens[0], tokens[1], nil
 }
