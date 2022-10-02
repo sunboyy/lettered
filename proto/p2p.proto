@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+option go_package = "github.com/sunboyy/lettered/pkg/p2p";
+
+message Header {
+    string event = 1;
+}
+
+message PingRequest {
+    string message = 1;
+}
+
+message PingResponse {
+    string message = 1;
+}
+
+message FriendInviteRequest {
+    string hostname = 1;
+    string alias = 2;
+}
+
+message FriendInviteResponse {
+    bool accepted = 1;
+    string alias = 2;
+}

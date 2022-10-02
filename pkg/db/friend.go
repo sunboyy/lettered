@@ -11,9 +11,8 @@ import (
 type FriendRequest struct {
 	gorm.Model
 
-	// PublicKey is an identity of the peer with which the request has been
-	// made.
-	PublicKey string
+	// NodeID is an identity of the peer with which the request has been made.
+	NodeID string
 
 	// Hostname is a host endpoint of the peer that you can communicate to.
 	Hostname string
@@ -26,12 +25,11 @@ type FriendRequest struct {
 // FindFriendRequest returns a friend request with the specified public key.
 // An error will not be returned if there is no record found the first return
 // value will be nil.
-func (db *DB) FindFriendRequest(publicKey string) (*FriendRequest,
+func (db *DB) FindFriendRequest(nodeID string) (*FriendRequest,
 	error) {
 
 	var friendRequest FriendRequest
-	result := db.backend.Where("public_key = ?", publicKey).
-		First(&friendRequest)
+	result := db.backend.Where("node_id = ?", nodeID).First(&friendRequest)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -43,11 +41,11 @@ func (db *DB) FindFriendRequest(publicKey string) (*FriendRequest,
 }
 
 // CreateFriendRequest inserts a friend request to the database.
-func (db *DB) CreateFriendRequest(publicKey string, hostname string,
+func (db *DB) CreateFriendRequest(nodeID string, hostname string,
 	isInitiator bool) (*FriendRequest, error) {
 
 	friendReq := FriendRequest{
-		PublicKey:   publicKey,
+		NodeID:      nodeID,
 		Hostname:    hostname,
 		IsInitiator: isInitiator,
 	}
@@ -68,8 +66,8 @@ func (db *DB) UpdateFriendRequest(friendReq *FriendRequest) error {
 
 // DeleteFriendRequest deletes friend request that matches the specified public
 // key.
-func (db *DB) DeleteFriendRequest(publicKey string) error {
-	result := db.backend.Where("public_key = ?", publicKey).
+func (db *DB) DeleteFriendRequest(nodeID string) error {
+	result := db.backend.Where("node_id = ?", nodeID).
 		Delete(&FriendRequest{})
 	return result.Error
 }
@@ -77,9 +75,9 @@ func (db *DB) DeleteFriendRequest(publicKey string) error {
 // Friend is a data structure for friends that are already accepted both ways.
 type Friend struct {
 	gorm.Model
-	PublicKey string
-	Hostname  string
-	Alias     string
+	NodeID   string
+	Hostname string
+	Alias    string
 }
 
 // CreateFriend inserts a new friend data into the friend database using the
@@ -88,9 +86,9 @@ func (db *DB) CreateFriend(friendReq *FriendRequest, alias string) (*Friend,
 	error) {
 
 	friend := Friend{
-		PublicKey: friendReq.PublicKey,
-		Hostname:  friendReq.Hostname,
-		Alias:     alias,
+		NodeID:   friendReq.NodeID,
+		Hostname: friendReq.Hostname,
+		Alias:    alias,
 	}
 	result := db.backend.Create(&friend)
 	if result.Error != nil {
@@ -102,10 +100,10 @@ func (db *DB) CreateFriend(friendReq *FriendRequest, alias string) (*Friend,
 
 // FriendExists checks whether there is a friend with the specified public key
 // stored in the database.
-func (db *DB) FriendExists(publicKey string) (bool, error) {
+func (db *DB) FriendExists(nodeID string) (bool, error) {
 	var count int64
 	result := db.backend.Model(&Friend{}).
-		Where("public_key = ?", publicKey).Count(&count)
+		Where("node_id = ?", nodeID).Count(&count)
 	if result.Error != nil {
 		return false, result.Error
 	}

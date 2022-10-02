@@ -32,7 +32,7 @@ type ManagementHandler struct {
 	commonConfig  common.Config
 	auth          *management.Auth
 	friendManager *friend.Manager
-	p2pClient     *p2p.Client
+	nodeID        string
 }
 
 // Middleware is an authentication middleware for the management APIs. It
@@ -94,7 +94,7 @@ type ManagementLoginResponse struct {
 func (h *ManagementHandler) Identity(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, IdentityResponse{
 		Identifier: p2p.CreateIdentifier(
-			h.commonConfig.PrivateKey.PubKey(),
+			h.nodeID,
 			h.commonConfig.Hostname,
 		),
 	})
@@ -105,11 +105,9 @@ type IdentityResponse struct {
 	Identifier string `json:"identifier"`
 }
 
-// PeerInfo is a gin handler performing as aproxy for requesting MyInfo API to
-// the specified peer.
-func (h *ManagementHandler) PeerInfo(ctx *gin.Context) {
-	var req PeerInfoRequest
-	if err := ctx.ShouldBindQuery(&req); err != nil {
+func (h *ManagementHandler) SendInvite(ctx *gin.Context) {
+	var req SendInviteRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(
 			http.StatusBadRequest,
 			gin.H{"error": ErrInvalidRequest.Error()},
@@ -117,16 +115,14 @@ func (h *ManagementHandler) PeerInfo(ctx *gin.Context) {
 		return
 	}
 
-	userInfo, err := p2p.NewPeer(h.p2pClient, req.Hostname).MyInfo()
-	if err != nil {
+	if err := h.friendManager.SendInvite(req.Identifier); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, userInfo)
+	ctx.JSON(http.StatusOK, gin.H{})
 }
 
-// PeerInfoRequest defines a request query structure when calling peer info API.
-type PeerInfoRequest struct {
-	Hostname string `form:"hostname"`
+type SendInviteRequest struct {
+	Identifier string `json:"identifier"`
 }

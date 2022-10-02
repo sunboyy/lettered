@@ -1,15 +1,12 @@
 package p2p
 
 import (
-	"encoding/json"
-	"errors"
-	"net/http"
+	"google.golang.org/protobuf/proto"
 )
 
-var (
-	// ErrStatusNotOK is returned when calling peers and not returning the
-	// response with status code 200 (OK).
-	ErrStatusNotOK = errors.New("status code is not 200")
+const (
+	EventPing         = "PING"
+	EventFriendInvite = "FRIEND_INVITE"
 )
 
 // Peer is a wrapper of P2P client struct containing useful functionality for
@@ -18,73 +15,42 @@ var (
 type Peer struct {
 	client *Client
 
-	// hostname of the peer.
-	hostname string
+	// identifier of the peer.
+	identifier string
 }
 
 // NewPeer is a constructor of Peer.
-func NewPeer(client *Client, hostname string) *Peer {
+func NewPeer(client *Client, identifier string) *Peer {
 	return &Peer{
-		client:   client,
-		hostname: hostname,
+		client:     client,
+		identifier: identifier,
 	}
 }
 
-// MyInfo requests to peer to get information about the peer user.
-func (p *Peer) MyInfo() (MyInfoResponse, error) {
-	res, err := p.client.GET(p.hostname, "/peer/people/my-info")
+// Ping invokes PING event request.
+func (p *Peer) Ping(req *PingRequest) (*PingResponse, error) {
+	resBytes, err := p.client.Request(p.identifier, EventPing, req)
 	if err != nil {
-		return MyInfoResponse{}, err
+		return nil, err
 	}
 
-	if res.StatusCode != http.StatusOK {
-		return MyInfoResponse{}, ErrStatusNotOK
+	var res PingResponse
+	if err := proto.Unmarshal(resBytes, &res); err != nil {
+		return nil, err
 	}
-
-	var data MyInfoResponse
-	err = json.NewDecoder(res.Body).Decode(&data)
-
-	return data, err
+	return &res, nil
 }
 
-// MyInfoResponse defines the response body when calling (*Peer).MyInfo.
-type MyInfoResponse struct {
-	// Alias is the peer's alias.
-	Alias string `json:"alias"`
-}
-
-// Invite requests to peer to invite the peer to be a friend.
-func (p *Peer) Invite(req InviteRequest) (InviteResponse, error) {
-	res, err := p.client.POST(
-		p.hostname,
-		"/peer/people/invite/receive",
-		req,
-	)
+// FriendInvite invokes FRIEND_INVITE event request.
+func (p *Peer) FriendInvite(req *FriendInviteRequest) (*FriendInviteResponse, error) {
+	resBytes, err := p.client.Request(p.identifier, EventFriendInvite, req)
 	if err != nil {
-		return InviteResponse{}, err
+		return nil, err
 	}
 
-	if res.StatusCode != http.StatusOK {
-		return InviteResponse{}, ErrStatusNotOK
+	var res FriendInviteResponse
+	if err := proto.Unmarshal(resBytes, &res); err != nil {
+		return nil, err
 	}
-
-	var data InviteResponse
-	err = json.NewDecoder(res.Body).Decode(&data)
-
-	return data, err
-}
-
-// InviteRequest defines the request body when calling (*Peer).Invite.
-type InviteRequest struct {
-	// Hostname of the user. When peers read this field, they will know how
-	// to send invitation response back.
-	Hostname string `json:"hostname"`
-}
-
-// InviteResponse defines the response body when calling (*Peer).Invite.
-type InviteResponse struct {
-	// Accepted indicates whether the peer accepts the invitation request.
-	// It can be true if the user is already a friend of the peer of the
-	// peer has previously invited the user to be a friend.
-	Accepted bool `json:"accepted"`
+	return &res, nil
 }

@@ -1,43 +1,70 @@
 package main
 
 import (
+	"crypto/tls"
+	"path/filepath"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	"github.com/sunboyy/lettered/pkg/config"
 	"github.com/sunboyy/lettered/pkg/db"
 	"github.com/sunboyy/lettered/pkg/friend"
 	"github.com/sunboyy/lettered/pkg/management"
 	"github.com/sunboyy/lettered/pkg/p2p"
+	"github.com/sunboyy/lettered/pkg/tlsutil"
 )
 
 func main() {
-	config, err := LoadConfig()
-	if err != nil {
-		log.Fatal().Err(err).Msg("unable to load configuration")
-	}
+	cfg := config.LoadConfig()
 
-	start(config)
+	start(cfg)
 }
 
-func start(config Config) {
-	db, err := db.New(config.DB)
+func start(cfg config.Config) {
+	cert, err := tlsutil.LoadOrGenerateCertificate(
+		filepath.Join(cfg.AppDataDir, "tls.cert"),
+		filepath.Join(cfg.AppDataDir, "tls.key"),
+	)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to load tls certificate")
+	}
+
+	nodeID, err := p2p.NodeIDFromCert(cert)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to derive node id from certificate")
+	}
+
+	db, err := db.Open(filepath.Join(cfg.AppDataDir, "db.sqlite"))
 	if err != nil {
 		panic(err)
 	}
 
-	commonConfig, err := config.Common.Config()
-	if err != nil {
-		panic(err)
-	}
+	p2pClient := p2p.NewClient(cert)
+	friendManager := friend.NewManager(cfg.Common, db, p2pClient, nodeID)
 
-	p2pClient, err := p2p.NewClient(commonConfig, config.P2P)
-	if err != nil {
-		panic(err)
-	}
-	friendManager := friend.NewManager(commonConfig, db, p2pClient)
+	go startP2PServer(cert, cfg.P2PPort, friendManager)
+	go startManagementServer(cfg, friendManager, nodeID)
 
-	managementAuth := management.NewAuth(config.Management)
+	forever := make(chan struct{})
+	<-forever
+}
+
+func startP2PServer(cert tls.Certificate, port int, friendManager *friend.Manager) {
+	p2pServer := p2p.NewServer(cert, port)
+
+	peerHandler := &PeerHandler{friendManager: friendManager}
+
+	p2pServer.On(p2p.EventPing, peerHandler.Ping)
+	p2pServer.On(p2p.EventFriendInvite, peerHandler.ReceiveInvite)
+
+	if err := p2pServer.Run(); err != nil {
+		log.Fatal().Err(err).Msg("error running p2p server")
+	}
+}
+
+func startManagementServer(cfg config.Config, friendManager *friend.Manager, nodeID string) {
+	managementAuth := management.NewAuth(cfg.Management)
 
 	r := gin.Default()
 
@@ -45,23 +72,17 @@ func start(config Config) {
 	managementRouter := r.Group("/management")
 	{
 		managementHandler := &ManagementHandler{
-			commonConfig:  commonConfig,
+			commonConfig:  cfg.Common,
 			auth:          managementAuth,
 			friendManager: friendManager,
+			nodeID:        nodeID,
 		}
 		managementRouter.POST("/login", managementHandler.Login)
 
 		managementRouter.Use(managementHandler.Middleware)
 		managementRouter.GET("/identity", managementHandler.Identity)
-		managementRouter.GET("/people/peer-info", managementHandler.PeerInfo)
+		managementRouter.POST("/people/invite/send", managementHandler.SendInvite)
 	}
 
-	// P2P communication APIs
-	peerRouter := r.Group("/peer")
-	{
-		peerHandler := &PeerHandler{friendManager: friendManager}
-		peerRouter.GET("/people/my-info", p2p.GinHandler(peerHandler.MyInfo))
-	}
-
-	r.Run(":" + strconv.Itoa(config.Port))
+	r.Run(":" + strconv.Itoa(cfg.Management.Port))
 }

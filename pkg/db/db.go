@@ -12,17 +12,19 @@ type DB struct {
 	backend *gorm.DB
 }
 
-// New creates a new instance of DB. It initializes database backend according
+// Open creates a new instance of DB. It initializes database backend according
 // to the configuration, migrates the database schema and wraps within a DB
 // struct.
-func New(config Config) (*DB, error) {
-	backend, err := gorm.Open(sqlite.Open(config.DBPath), &gorm.Config{})
+func Open(path string) (*DB, error) {
+	backend, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
 
-	backend.AutoMigrate(&FriendRequest{})
-	backend.AutoMigrate(&Friend{})
+	backend.AutoMigrate(
+		&FriendRequest{},
+		&Friend{},
+	)
 
 	return &DB{backend: backend}, nil
 }

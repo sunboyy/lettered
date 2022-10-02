@@ -1,49 +1,55 @@
-package main
+package config
 
 import (
+	"os"
+
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/rs/zerolog/log"
 	"github.com/sunboyy/lettered/pkg/common"
-	"github.com/sunboyy/lettered/pkg/db"
 	"github.com/sunboyy/lettered/pkg/management"
-	"github.com/sunboyy/lettered/pkg/p2p"
 	"gopkg.in/ini.v1"
 )
 
+var defaultAppDataDir = btcutil.AppDataDir("lettered", false)
+
 // Config contains all of the configuration options of the application.
 type Config struct {
-	Port       int
-	Common     common.RawConfig
-	DB         db.Config
+	AppDataDir string
+	P2PPort    int
+	Common     common.Config
 	Management management.Config
-	P2P        p2p.Config
 }
 
 // LoadConfig instantiates a Config struct and fill in the configuration options
 // from the config files in the following order:
-//  1) ./config.ini
+//  1. ./config.ini
 //
 // The configuration option that is not provided in any of the config files will
 // be set to default as described in the DefaultConfig function.
-func LoadConfig() (Config, error) {
+func LoadConfig() Config {
 	cfg, err := ini.Load("config.ini")
 	if err != nil {
-		return Config{}, err
+		log.Fatal().Err(err).Msg("config: cannot load config file")
 	}
 
 	config := DefaultConfig()
 	if err := cfg.MapTo(&config); err != nil {
-		return Config{}, err
+		log.Fatal().Err(err).Msg("config: cannot map config file to struct")
 	}
 
-	return config, nil
+	if err := os.MkdirAll(config.AppDataDir, 0700); err != nil {
+		log.Fatal().Err(err).Msg("config: cannot ensure app data directory")
+	}
+
+	return config
 }
 
 // DefaultConfig returns all default values for the Config struct.
 func DefaultConfig() Config {
 	return Config{
-		Port:       8080,
+		AppDataDir: defaultAppDataDir,
+		P2PPort:    1926,
 		Common:     common.DefaultConfig(),
-		DB:         db.DefaultConfig(),
 		Management: management.DefaultConfig(),
-		P2P:        p2p.DefaultConfig(),
 	}
 }

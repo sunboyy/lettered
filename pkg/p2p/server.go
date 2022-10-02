@@ -1,79 +1,161 @@
 package p2p
 
 import (
-	"crypto/sha256"
-	"io/ioutil"
-	"net/http"
+	"crypto/tls"
+	"encoding/binary"
+	"errors"
+	"io"
+	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
-	"github.com/sunboyy/lettered/pkg/security"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // HandlerFunc defines the handler used by P2P service.
-type HandlerFunc func(publicKey string, body []byte) (interface{}, error)
+type HandlerFunc func(nodeID string, body []byte) (protoreflect.ProtoMessage,
+	error)
 
-// GinHandler creates a gin handler wrapping P2P handler function. It validates
-// the request and extracts the request information before sending the request
-// to the wrapped handler function. If the public key or the signature is
-// invalid, the error response will be returned immediately.
-func GinHandler(handler HandlerFunc) gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		publicKeyString := ctx.Request.Header.Get(headerPublicKey)
-		signatureString := ctx.Request.Header.Get(headerSignature)
+// Server is a custom TLS over TCP server that handles P2P communication from
+// peer nodes.
+type Server struct {
+	cert       tls.Certificate
+	port       int
+	handlerMap map[string]HandlerFunc
+}
 
-		publicKey, err := security.ParsePublicKey(publicKeyString)
-		if err != nil {
-			respondError(
-				ctx,
-				http.StatusUnauthorized,
-				err,
-				"invalid public key",
-			)
-			return
-		}
-
-		body, err := ioutil.ReadAll(ctx.Request.Body)
-		if err != nil {
-			respondError(
-				ctx,
-				http.StatusBadRequest,
-				err,
-				"cannot read request body",
-			)
-			return
-		}
-
-		// Calculate SHA256 of timestamp header for verifying with the
-		// signature.
-		hash := sha256.Sum256(body)
-
-		if !security.VerifySignature(
-			publicKey,
-			hash[:],
-			signatureString,
-		) {
-			ctx.JSON(
-				http.StatusUnauthorized,
-				gin.H{"error": "invalid signature"},
-			)
-			return
-		}
-
-		response, err := handler(publicKeyString, body)
-		if err != nil {
-			ctx.JSON(
-				http.StatusBadRequest,
-				gin.H{"error": err.Error()},
-			)
-			return
-		}
-
-		ctx.JSON(http.StatusOK, response)
+// NewServer is the constructor function for Server.
+func NewServer(cert tls.Certificate, port int) *Server {
+	return &Server{
+		cert:       cert,
+		port:       port,
+		handlerMap: map[string]HandlerFunc{},
 	}
 }
 
-func respondError(ctx *gin.Context, code int, err error, message string) {
-	log.Debug().Str("source", "p2p.HandlerWrapper").Err(err).Msg(message)
-	ctx.JSON(code, gin.H{"error": message})
+func (s *Server) On(event string, handler HandlerFunc) {
+	s.handlerMap[event] = handler
+}
+
+// Run starts the server.
+func (s *Server) Run() error {
+	tlsConfig := &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		Certificates:       []tls.Certificate{s.cert},
+		ClientAuth:         tls.RequestClientCert,
+		InsecureSkipVerify: true,
+	}
+
+	listener, err := tls.Listen("tcp", ":"+strconv.Itoa(s.port), tlsConfig)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+
+	log.Info().Msgf("listening to p2p connection on port %d", s.port)
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Error().Err(err).Msg("error accepting connection")
+			continue
+		}
+
+		log.Info().
+			Msgf("accepted connection from %s", conn.RemoteAddr())
+
+		go s.handleConnection(conn.(*tls.Conn))
+	}
+}
+
+// handleConnection is a middleware, authenticating the connection and transform
+// request body for easier use in the handler functions. It rejects the client
+// without certificate and then extract the request body as in the designed
+// protocol format.
+func (s *Server) handleConnection(conn *tls.Conn) {
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Error().Err(err).
+				Msgf("error closing connection from %s", conn.RemoteAddr())
+		}
+	}()
+
+	// Handshake so that client certificate can be read from the server.
+	if !conn.ConnectionState().HandshakeComplete {
+		if err := conn.Handshake(); err != nil {
+			log.Error().Err(err).Msg("error handshaking")
+			return
+		}
+	}
+
+	clientCerts := conn.ConnectionState().PeerCertificates
+	if len(clientCerts) == 0 {
+		log.Info().Msgf(
+			"connection from %s does not provide certificate",
+			conn.RemoteAddr(),
+		)
+		return
+	}
+
+	nodeID, err := NodeIDFromPubKey(clientCerts[0].PublicKey)
+	if err != nil {
+		log.Error().Err(err).Msg("cannot derive node id from public key")
+		return
+	}
+
+	data, err := io.ReadAll(conn)
+	if err != nil {
+		log.Error().Err(err).Msg("error reading connection")
+		return
+	}
+
+	header, bodyBytes, err := extractMessage(data)
+	if err != nil {
+		log.Warn().Err(err).Msg("unable to extract message")
+		return
+	}
+
+	handler, ok := s.handlerMap[header.GetEvent()]
+	if !ok {
+		log.Debug().Msgf("no such route %s", header.GetEvent())
+		return
+	}
+
+	response, err := handler(nodeID, bodyBytes)
+	if err != nil {
+		log.Warn().Err(err).Msg("handler error")
+		return
+	}
+
+	responseBytes, err := proto.Marshal(response)
+	if err != nil {
+		log.Error().Err(err).Msgf("cannot encode response %v", response)
+		return
+	}
+	if _, err := conn.Write(responseBytes); err != nil {
+		log.Error().Err(err).Msgf("cannot encode response %v", response)
+		return
+	}
+}
+
+// extractMessage extracts request body to the protocol format
+// [headerLength(2)||header(headerLength)||body(*)] the header is extracted
+// using protobuf to get the event, while the body is remain untouched.
+func extractMessage(data []byte) (*Header, []byte, error) {
+	if len(data) < 2 {
+		return nil, nil, errors.New("header too short")
+	}
+
+	headerLength := binary.BigEndian.Uint16(data[:2])
+
+	if len(data) < int(2+headerLength) {
+		return nil, nil, errors.New("header too short")
+	}
+
+	var header Header
+	if err := proto.Unmarshal(data[2:2+headerLength], &header); err != nil {
+		return nil, nil, err
+	}
+
+	return &header, data[2+headerLength:], nil
 }

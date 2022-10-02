@@ -2,6 +2,9 @@ package management
 
 // Config defines the configuration options for the management console.
 type Config struct {
+	// Port specifies the HTTP port for the management server API.
+	Port int
+
 	// Password is the secret key for logging in to the management console.
 	Password string
 
@@ -13,6 +16,7 @@ type Config struct {
 // DefaultConfig returns all default values for the Config struct.
 func DefaultConfig() Config {
 	return Config{
+		Port:           11926,
 		Password:       "letteradm",
 		SessionTimeout: 3600,
 	}
