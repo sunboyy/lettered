@@ -2,21 +2,24 @@ package friend
 
 import (
 	"errors"
+	"fmt"
 
-	"github.com/rs/zerolog/log"
 	"github.com/sunboyy/lettered/pkg/common"
 	"github.com/sunboyy/lettered/pkg/db"
 	"github.com/sunboyy/lettered/pkg/p2p"
 )
 
 var (
-	// ErrInvalidIdentifier is returned when identifier format is invalid.
-	ErrInvalidIdentifier = errors.New("invalid identifier")
 	// ErrInviteSelf is return when the user is trying to invite himself.
 	ErrInviteSelf = errors.New("cannot invite to self")
+
 	// ErrAlreadyFriend is returned when sending friend request to peers
 	// that are already the friend of the user.
 	ErrAlreadyFriend = errors.New("already a friend")
+
+	// ErrInvalidIdentifier is an error indicating that the identifier
+	// cannot be extracted because of an unexpected pattern.
+	ErrInvalidIdentifier = errors.New("invalid identifier")
 )
 
 // Manager contains a set of functionalities managing user's friends.
@@ -55,9 +58,7 @@ func (m *Manager) SendInvite(identifier string) error {
 	// Discard sending friend request if the peer is already a friend.
 	alreadyFriend, err := m.db.FriendExists(nodeID)
 	if err != nil {
-		log.Warn().Str("source", "friend.Manager.SendInvite").
-			Err(err).Msg("cannot request db.FriendExists")
-		return err
+		return fmt.Errorf("find friend %s: %w", nodeID, err)
 	}
 	if alreadyFriend {
 		return ErrAlreadyFriend
@@ -70,9 +71,7 @@ func (m *Manager) SendInvite(identifier string) error {
 			Alias:    m.commonConfig.Alias,
 		})
 	if err != nil {
-		log.Warn().Str("source", "friend.Manager.SendInvite").
-			Err(err).Msg("error sending invitation to peer")
-		return err
+		return fmt.Errorf("friend invite %s: %w", nodeID, err)
 	}
 
 	// If peer accepts friend request, insert into friend database.
@@ -86,20 +85,21 @@ func (m *Manager) SendInvite(identifier string) error {
 	// Find previously created friend request in the database.
 	friendReq, err := m.db.FindFriendRequest(nodeID)
 	if err != nil {
-		log.Warn().Str("source", "friend.Manager.SendInvite").
-			Err(err).Msg("cannot request db.FindFriendRequest")
-		return err
+		return fmt.Errorf("find friend req %s: %w", nodeID, err)
 	}
 
 	// If there is no previous friend request between the user and this
 	// peer, create one.
 	if friendReq == nil {
-		_, err = m.db.CreateFriendRequest(
+		if _, err := m.db.CreateFriendRequest(
 			nodeID,
 			hostname,
 			true,
-		)
-		return err
+		); err != nil {
+			return fmt.Errorf("create friend req %s: %w", nodeID,
+				err)
+		}
+		return nil
 	}
 
 	// Update friend request to the latest value.
@@ -110,9 +110,7 @@ func (m *Manager) SendInvite(identifier string) error {
 		friendReq.IsInitiator = true
 	}
 	if err := m.db.UpdateFriendRequest(friendReq); err != nil {
-		log.Warn().Str("source", "friend.Manager.SendInvite").
-			Err(err).Msg("cannot request db.UpdateFriendRequest")
-		return err
+		return fmt.Errorf("update friend req %s: %w", nodeID, err)
 	}
 
 	return nil
@@ -130,9 +128,7 @@ func (m *Manager) ReceiveInvite(nodeID string,
 	// Immediately return if the requester is already a friend.
 	alreadyFriend, err := m.db.FriendExists(nodeID)
 	if err != nil {
-		log.Warn().Str("source", "friend.Manager.ReceiveInvite").
-			Err(err).Msg("cannot request db.FriendExists")
-		return nil, err
+		return nil, fmt.Errorf("find friend %s: %w", nodeID, err)
 	}
 	if alreadyFriend {
 		return &p2p.FriendInviteResponse{
@@ -144,9 +140,7 @@ func (m *Manager) ReceiveInvite(nodeID string,
 	// Find previously created friend request.
 	friendReq, err := m.db.FindFriendRequest(nodeID)
 	if err != nil {
-		log.Warn().Str("source", "friend.Manager.ReceiveInvite").
-			Err(err).Msg("cannot request db.FindFriendRequest")
-		return nil, err
+		return nil, fmt.Errorf("find friend req %s: %w", nodeID, err)
 	}
 
 	// If there is no previously created friend request, create one.
@@ -156,10 +150,8 @@ func (m *Manager) ReceiveInvite(nodeID string,
 			req.Hostname,
 			false,
 		); err != nil {
-			log.Warn().
-				Str("source", "friend.Manager.ReceiveInvite").
-				Err(err).Msg("cannot request db.FriendExists")
-			return nil, err
+			return nil, fmt.Errorf("create friend req %s: %w",
+				nodeID, err)
 		}
 
 		return &p2p.FriendInviteResponse{Accepted: false}, nil
@@ -181,9 +173,7 @@ func (m *Manager) ReceiveInvite(nodeID string,
 	// Update friend request to the latest value.
 	friendReq.Hostname = req.Hostname
 	if err := m.db.UpdateFriendRequest(friendReq); err != nil {
-		log.Warn().Str("source", "friend.Manager.ReceiveInvite").
-			Err(err).Msg("cannot request db.UpdateFriendRequest")
-		return nil, err
+		return nil, fmt.Errorf("update friend req %s: %w", nodeID, err)
 	}
 
 	return &p2p.FriendInviteResponse{Accepted: false}, nil
@@ -196,15 +186,12 @@ func (m *Manager) requestToFriend(friendReq *db.FriendRequest,
 	alias string) error {
 
 	if _, err := m.db.CreateFriend(friendReq, alias); err != nil {
-		log.Warn().Str("source", "friend.Manager.requestToFriend").
-			Err(err).Msg("cannot request db.CreateFriend")
-		return err
+		return fmt.Errorf("create friend %s: %w", friendReq.NodeID, err)
 	}
 
 	if err := m.db.DeleteFriendRequest(friendReq.NodeID); err != nil {
-		log.Warn().Str("source", "friend.Manager.requestToFriend").
-			Err(err).Msg("cannot request DeleteFriendRequest")
-		return err
+		return fmt.Errorf("delete friend req %s: %w", friendReq.NodeID,
+			err)
 	}
 
 	return nil

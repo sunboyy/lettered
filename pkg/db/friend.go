@@ -11,7 +11,8 @@ import (
 type FriendRequest struct {
 	gorm.Model
 
-	// NodeID is an identity of the peer with which the request has been made.
+	// NodeID is an identity of the peer with which the request has been
+	// made.
 	NodeID string
 
 	// Hostname is a host endpoint of the peer that you can communicate to.

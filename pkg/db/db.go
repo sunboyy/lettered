@@ -1,6 +1,8 @@
 package db
 
 import (
+	"fmt"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -18,13 +20,15 @@ type DB struct {
 func Open(path string) (*DB, error) {
 	backend, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	backend.AutoMigrate(
+	if err := backend.AutoMigrate(
 		&FriendRequest{},
 		&Friend{},
-	)
+	); err != nil {
+		return nil, fmt.Errorf("auto-migrate sqlite: %w", err)
+	}
 
 	return &DB{backend: backend}, nil
 }

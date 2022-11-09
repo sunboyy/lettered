@@ -34,11 +34,13 @@ func LoadConfig() Config {
 
 	config := DefaultConfig()
 	if err := cfg.MapTo(&config); err != nil {
-		log.Fatal().Err(err).Msg("config: cannot map config file to struct")
+		log.Fatal().Err(err).
+			Msg("config: cannot map config file to struct")
 	}
 
 	if err := os.MkdirAll(config.AppDataDir, 0700); err != nil {
-		log.Fatal().Err(err).Msg("config: cannot ensure app data directory")
+		log.Fatal().Err(err).
+			Msg("config: cannot ensure app data directory")
 	}
 
 	return config

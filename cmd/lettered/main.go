@@ -32,7 +32,7 @@ func start(cfg config.Config) {
 
 	nodeID, err := p2p.NodeIDFromCert(cert)
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to derive node id from certificate")
+		log.Fatal().Err(err).Msg("error deriving node id from cert")
 	}
 
 	db, err := db.Open(filepath.Join(cfg.AppDataDir, "db.sqlite"))
@@ -50,7 +50,9 @@ func start(cfg config.Config) {
 	<-forever
 }
 
-func startP2PServer(cert tls.Certificate, port int, friendManager *friend.Manager) {
+func startP2PServer(cert tls.Certificate, port int,
+	friendManager *friend.Manager) {
+
 	p2pServer := p2p.NewServer(cert, port)
 
 	peerHandler := &PeerHandler{friendManager: friendManager}
@@ -63,26 +65,30 @@ func startP2PServer(cert tls.Certificate, port int, friendManager *friend.Manage
 	}
 }
 
-func startManagementServer(cfg config.Config, friendManager *friend.Manager, nodeID string) {
+func startManagementServer(cfg config.Config, friendManager *friend.Manager,
+	nodeID string) {
+
 	managementAuth := management.NewAuth(cfg.Management)
 
 	r := gin.Default()
 
 	// Management APIs
-	managementRouter := r.Group("/management")
+	mgmtRouter := r.Group("/management")
 	{
-		managementHandler := &ManagementHandler{
+		mgmtHandler := &ManagementHandler{
 			commonConfig:  cfg.Common,
 			auth:          managementAuth,
 			friendManager: friendManager,
 			nodeID:        nodeID,
 		}
-		managementRouter.POST("/login", managementHandler.Login)
+		mgmtRouter.POST("/login", mgmtHandler.Login)
 
-		managementRouter.Use(managementHandler.Middleware)
-		managementRouter.GET("/identity", managementHandler.Identity)
-		managementRouter.POST("/people/invite/send", managementHandler.SendInvite)
+		mgmtRouter.Use(mgmtHandler.Middleware)
+		mgmtRouter.GET("/identity", mgmtHandler.Identity)
+		mgmtRouter.POST("/people/invite/send", mgmtHandler.SendInvite)
 	}
 
-	r.Run(":" + strconv.Itoa(cfg.Management.Port))
+	if err := r.Run(":" + strconv.Itoa(cfg.Management.Port)); err != nil {
+		log.Fatal().Err(err).Msg("unable to start management server")
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 
@@ -11,6 +12,10 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
+
+// errHeaderTooShort is an error indicating that the received message does not
+// have enough length to be able to process the header.
+var errHeaderTooShort = errors.New("header too short")
 
 // HandlerFunc defines the handler used by P2P service.
 type HandlerFunc func(nodeID string, body []byte) (protoreflect.ProtoMessage,
@@ -48,7 +53,7 @@ func (s *Server) Run() error {
 
 	listener, err := tls.Listen("tcp", ":"+strconv.Itoa(s.port), tlsConfig)
 	if err != nil {
-		return err
+		return fmt.Errorf("tls listen: %w", err)
 	}
 	defer listener.Close()
 
@@ -57,14 +62,22 @@ func (s *Server) Run() error {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Error().Err(err).Msg("error accepting connection")
+			log.Error().Err(err).
+				Msg("error accepting connection")
 			continue
 		}
 
 		log.Info().
 			Msgf("accepted connection from %s", conn.RemoteAddr())
 
-		go s.handleConnection(conn.(*tls.Conn))
+		tlsConn, ok := conn.(*tls.Conn)
+		if !ok {
+			log.Error().Err(err).
+				Msg("could not cast net.Conn to *tls.Conn")
+			continue
+		}
+
+		go s.handleConnection(tlsConn)
 	}
 }
 
@@ -75,8 +88,9 @@ func (s *Server) Run() error {
 func (s *Server) handleConnection(conn *tls.Conn) {
 	defer func() {
 		if err := conn.Close(); err != nil {
-			log.Error().Err(err).
-				Msgf("error closing connection from %s", conn.RemoteAddr())
+			log.Error().Err(err).Msgf(
+				"error closing connection from %s",
+				conn.RemoteAddr())
 		}
 	}()
 
@@ -99,7 +113,7 @@ func (s *Server) handleConnection(conn *tls.Conn) {
 
 	nodeID, err := NodeIDFromPubKey(clientCerts[0].PublicKey)
 	if err != nil {
-		log.Error().Err(err).Msg("cannot derive node id from public key")
+		log.Error().Err(err).Msg("error deriving node id")
 		return
 	}
 
@@ -143,18 +157,18 @@ func (s *Server) handleConnection(conn *tls.Conn) {
 // using protobuf to get the event, while the body is remain untouched.
 func extractMessage(data []byte) (*Header, []byte, error) {
 	if len(data) < 2 {
-		return nil, nil, errors.New("header too short")
+		return nil, nil, errHeaderTooShort
 	}
 
 	headerLength := binary.BigEndian.Uint16(data[:2])
 
 	if len(data) < int(2+headerLength) {
-		return nil, nil, errors.New("header too short")
+		return nil, nil, errHeaderTooShort
 	}
 
 	var header Header
 	if err := proto.Unmarshal(data[2:2+headerLength], &header); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("unmarshal header: %w", err)
 	}
 
 	return &header, data[2+headerLength:], nil

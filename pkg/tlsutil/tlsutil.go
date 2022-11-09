@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"os"
 	"time"
@@ -39,13 +40,13 @@ func NewCertificate(certFile, keyFile string) (tls.Certificate, error) {
 
 	certOut, err := os.Create(certFile)
 	if err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, fmt.Errorf("open cert file: %w", err)
 	}
 	if err := pem.Encode(certOut, certBlock); err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, fmt.Errorf("encode cert pem: %w", err)
 	}
 	if err := certOut.Close(); err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, fmt.Errorf("close cert file: %w", err)
 	}
 
 	keyOut, err := os.OpenFile(
@@ -54,31 +55,35 @@ func NewCertificate(certFile, keyFile string) (tls.Certificate, error) {
 		0600,
 	)
 	if err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, fmt.Errorf("open key file: %w", err)
 	}
 	if err := pem.Encode(keyOut, keyBlock); err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, fmt.Errorf("encode key pem: %w", err)
 	}
 	if err := keyOut.Close(); err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, fmt.Errorf("close key file: %w", err)
 	}
 
-	return tls.X509KeyPair(
+	tlsCert, err := tls.X509KeyPair(
 		pem.EncodeToMemory(certBlock),
 		pem.EncodeToMemory(keyBlock),
 	)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("x509 key pair: %w", err)
+	}
+	return tlsCert, nil
 }
 
 func generateCertificate() (*pem.Block, *pem.Block, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("generate key: %w", err)
 	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("random serial: %w", err)
 	}
 
 	notBefore := time.Now().Truncate(time.Hour * 24)
@@ -112,12 +117,12 @@ func generateCertificate() (*pem.Block, *pem.Block, error) {
 		priv,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("create cert: %w", err)
 	}
 
 	privDerBytes, err := x509.MarshalECPrivateKey(priv)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("marshal privkey: %w", err)
 	}
 
 	certBlock := &pem.Block{

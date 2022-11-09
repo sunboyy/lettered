@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"fmt"
+
 	"google.golang.org/protobuf/proto"
 )
 
@@ -36,13 +38,15 @@ func (p *Peer) Ping(req *PingRequest) (*PingResponse, error) {
 
 	var res PingResponse
 	if err := proto.Unmarshal(resBytes, &res); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 	return &res, nil
 }
 
 // FriendInvite invokes FRIEND_INVITE event request.
-func (p *Peer) FriendInvite(req *FriendInviteRequest) (*FriendInviteResponse, error) {
+func (p *Peer) FriendInvite(req *FriendInviteRequest) (*FriendInviteResponse,
+	error) {
+
 	resBytes, err := p.client.Request(p.identifier, EventFriendInvite, req)
 	if err != nil {
 		return nil, err
@@ -50,7 +54,7 @@ func (p *Peer) FriendInvite(req *FriendInviteRequest) (*FriendInviteResponse, er
 
 	var res FriendInviteResponse
 	if err := proto.Unmarshal(resBytes, &res); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 	return &res, nil
 }

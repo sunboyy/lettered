@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 	"github.com/sunboyy/lettered/pkg/common"
 	"github.com/sunboyy/lettered/pkg/friend"
 	"github.com/sunboyy/lettered/pkg/management"
@@ -21,9 +22,9 @@ var (
 	// body or request query with the response struct.
 	ErrInvalidRequest = errors.New("invalid request")
 
-	// ErrIncorrectPassword is returned when login API is called but the
-	// given password is incorrect.
-	ErrIncorrectPassword = errors.New("incorrect password")
+	// ErrInternalServerError is returned when the unexpected error occurs
+	// while processing the request.
+	ErrInternalServerError = errors.New("internal server error")
 )
 
 // ManagementHandler is a set of gin handlers functions that handles management
@@ -65,12 +66,20 @@ func (h *ManagementHandler) Login(ctx *gin.Context) {
 		return
 	}
 
-	accessToken, ok := h.auth.Login(req.Password)
-	if !ok {
-		ctx.JSON(
-			http.StatusBadRequest,
-			gin.H{"error": ErrIncorrectPassword},
-		)
+	accessToken, err := h.auth.Login(req.Password)
+	if err != nil {
+		if errors.Is(err, management.ErrIncorrectPassword) {
+			ctx.JSON(
+				http.StatusBadRequest,
+				gin.H{"error": err.Error()},
+			)
+		} else {
+			log.Warn().Err(err).Msg("error processing login")
+			ctx.JSON(
+				http.StatusInternalServerError,
+				gin.H{"error": ErrInternalServerError.Error()},
+			)
+		}
 		return
 	}
 
@@ -116,7 +125,21 @@ func (h *ManagementHandler) SendInvite(ctx *gin.Context) {
 	}
 
 	if err := h.friendManager.SendInvite(req.Identifier); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if errors.Is(err, friend.ErrInvalidIdentifier) ||
+			errors.Is(err, friend.ErrInviteSelf) ||
+			errors.Is(err, friend.ErrAlreadyFriend) {
+
+			ctx.JSON(
+				http.StatusBadRequest,
+				gin.H{"error": err.Error()},
+			)
+		} else {
+			log.Warn().Err(err).Msg("error sending invite")
+			ctx.JSON(
+				http.StatusInternalServerError,
+				gin.H{"error": ErrInternalServerError.Error()},
+			)
+		}
 		return
 	}
 

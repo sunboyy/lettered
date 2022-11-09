@@ -4,10 +4,26 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 
 	"google.golang.org/protobuf/proto"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+)
+
+var (
+	// errNoServerCert is an error indicating that the server does not
+	// provide a certificate to verify themselves.
+	errNoServerCert = errors.New("server does not provide a certificate")
+
+	// errUnexpectedServerNodeID is an error indicating that the node ID
+	// derived from the server public's key does not match with the
+	// expected one in the identifier.
+	errUnexpectedServerNodeID = errors.New("unexpected server node id")
+
+	// errInvalidIdentifier is an error indicating that the identifier
+	// cannot be extracted because of an unexpected pattern.
+	errInvalidIdentifier = errors.New("invalid identifier")
 )
 
 // Client is an P2P client to communicate with peers. Communication is performed
@@ -37,7 +53,7 @@ func (c *Client) Request(identifier string, event string,
 
 	expectedNodeID, hostname, ok := ExtractIdentifier(identifier)
 	if !ok {
-		return nil, errors.New("invalid identifier")
+		return nil, errInvalidIdentifier
 	}
 
 	tlsConfig := &tls.Config{
@@ -49,12 +65,12 @@ func (c *Client) Request(identifier string, event string,
 
 	conn, err := tls.Dial("tcp", hostname, tlsConfig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tls dial: %w", err)
 	}
 	defer conn.Close()
 
 	if len(conn.ConnectionState().PeerCertificates) == 0 {
-		return nil, errors.New("the server does not provide a certificate")
+		return nil, errNoServerCert
 	}
 
 	actualNodeID, err := NodeIDFromPubKey(
@@ -65,13 +81,13 @@ func (c *Client) Request(identifier string, event string,
 	}
 
 	if expectedNodeID != actualNodeID {
-		return nil, errors.New("server sent invalid node id as expected")
+		return nil, errUnexpectedServerNodeID
 	}
 
 	header := Header{Event: event}
 	headerBytes, err := proto.Marshal(&header)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal header proto: %w", err)
 	}
 
 	headerLength := make([]byte, 2)
@@ -79,21 +95,25 @@ func (c *Client) Request(identifier string, event string,
 
 	bodyBytes, err := proto.Marshal(body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal body proto: %w", err)
 	}
 
 	if _, err := conn.Write(headerLength); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write header length: %w", err)
 	}
 	if _, err := conn.Write(headerBytes); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write header: %w", err)
 	}
 	if _, err := conn.Write(bodyBytes); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write body: %w", err)
 	}
 	if err := conn.CloseWrite(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("close write: %w", err)
 	}
 
-	return io.ReadAll(conn)
+	response, err := io.ReadAll(conn)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	return response, nil
 }

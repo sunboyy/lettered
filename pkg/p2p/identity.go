@@ -11,12 +11,18 @@ import (
 	"strings"
 )
 
+var (
+	// errUnsupportedPrivateKey is an error indicating that the private key
+	// is in an unsupported type.
+	errUnsupportedPrivateKey = errors.New("unsupported private key")
+)
+
 // NodeIDFromPubKey derives node ID from TLS certificate by extracting an ECDSA
-// public key from the certificate and pass through NodeIDFromPubKey
+// public key from the certificate and pass through NodeIDFromPubKey.
 func NodeIDFromCert(cert tls.Certificate) (string, error) {
 	priv, ok := cert.PrivateKey.(*ecdsa.PrivateKey)
 	if !ok {
-		return "", errors.New("not an ecdsa private key")
+		return "", errUnsupportedPrivateKey
 	}
 	return NodeIDFromPubKey(priv.Public())
 }
@@ -26,7 +32,7 @@ func NodeIDFromCert(cert tls.Certificate) (string, error) {
 func NodeIDFromPubKey(pubKey any) (string, error) {
 	pubBytes, err := x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal pubkey: %w", err)
 	}
 
 	pubHash := sha256.Sum256(pubBytes)

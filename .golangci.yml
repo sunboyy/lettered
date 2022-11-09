@@ -1,0 +1,14 @@
+linters:
+  enable:
+    - errname
+    - errorlint
+    - forcetypeassert
+    - godot
+    - goerr113
+    - lll
+    - stylecheck
+    - wrapcheck
+linters-settings:
+  lll:
+    line-length: 80
+    tab-width: 8

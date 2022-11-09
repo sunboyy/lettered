@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/sunboyy/lettered/pkg/friend"
 	"github.com/sunboyy/lettered/pkg/p2p"
 	"google.golang.org/protobuf/proto"
@@ -17,7 +19,7 @@ func (h *PeerHandler) Ping(nodeID string, body []byte) (
 
 	var req p2p.PingRequest
 	if err := proto.Unmarshal(body, &req); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal req body: %w", err)
 	}
 
 	return &p2p.PingResponse{
@@ -30,8 +32,12 @@ func (h *PeerHandler) ReceiveInvite(nodeID string, body []byte) (
 
 	var req p2p.FriendInviteRequest
 	if err := proto.Unmarshal(body, &req); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal req body: %w", err)
 	}
 
-	return h.friendManager.ReceiveInvite(nodeID, &req)
+	res, err := h.friendManager.ReceiveInvite(nodeID, &req)
+	if err != nil {
+		return nil, fmt.Errorf("fm receive invite: %w", err)
+	}
+	return res, nil
 }
